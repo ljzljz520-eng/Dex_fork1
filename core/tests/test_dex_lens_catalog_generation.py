@@ -680,13 +680,13 @@ def test_enriched_preview_validates_all_four_classes_against_released_schema(tmp
     classes = [entry["capability_class"] for entry in envelope["catalogue"]["capabilities"]]
     assert {item: classes.count(item) for item in set(classes)} == {
         "active-skill": 96,
-        "mcp-server": 11,
+        "mcp-server": 12,
         "scheduled-automation": 5,
         "system-engine": 5,
     }
     availability = [entry["availability"] for entry in envelope["catalogue"]["capabilities"]]
     assert {item: availability.count(item) for item in set(availability)} == {
-        "active": 86,
+        "active": 87,
         "dormant": 29,
         "parked": 2,
     }
@@ -748,7 +748,7 @@ def test_signed_enriched_release_path_emits_catalogue_version_seven(
     classes = [entry["capability_class"] for entry in envelope["catalogue"]["capabilities"]]
     assert {item: classes.count(item) for item in set(classes)} == {
         "active-skill": 96,
-        "mcp-server": 11,
+        "mcp-server": 12,
         "scheduled-automation": 5,
         "system-engine": 5,
     }
@@ -768,11 +768,11 @@ def test_corrected_catalogue_has_complete_truthful_identity_sets(
     by_id = {entry["capability_id"]: entry for entry in entries}
 
     assert envelope["metadata"]["catalog_version"] == 7
-    assert len(entries) == len(by_id) == 117
+    assert len(entries) == len(by_id) == 118
     assert "connect" not in by_id
     assert by_id["dex-pipedrive-mcp"]["tool_count"] == 15
     assert by_id["connection-manager-engine"]["availability"] == "parked"
-    assert sum(entry.get("tool_count", 0) for entry in entries) == 156
+    assert sum(entry.get("tool_count", 0) for entry in entries) == 158
 
 
 def test_signed_enriched_release_path_carries_the_significant_family_contract(

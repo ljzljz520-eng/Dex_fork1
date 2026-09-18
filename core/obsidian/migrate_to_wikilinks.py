@@ -192,10 +192,42 @@ def create_git_backup() -> tuple[str, bool]:
         raise RuntimeError(baseline.stderr.strip() or 'git could not identify the backup commit')
     return baseline.stdout.strip(), created
 
+def _bytes_converter(person_idx: dict, project_idx: dict, company_idx: dict):
+    """Adapt the pure text conversion to the changeset bytes->bytes contract."""
+
+    def convert(data: bytes) -> bytes:
+        text = data.decode('utf-8')
+        new_text, _changes = convert_references_in_file(
+            text, person_idx, project_idx, company_idx
+        )
+        return new_text.encode('utf-8')
+
+    return convert
+
+
+def _preview(files: List[Path], person_idx: dict,
+             project_idx: dict, company_idx: dict) -> Tuple[int, int]:
+    """Read-only dry run: (files that would change, total conversions)."""
+    files_modified = 0
+    total_changes = 0
+    for md_file in tqdm(files, desc='Checking') if HAS_TQDM else files:
+        content = md_file.read_text(encoding='utf-8')
+        _new_content, changes = convert_references_in_file(
+            content, person_idx, project_idx, company_idx
+        )
+        if changes > 0:
+            files_modified += 1
+            total_changes += changes
+    return files_modified, total_changes
+
+
 def migrate_vault(dry_run: bool = False) -> int:
-    """Main migration function"""
+    """Main migration function: index -> prepare -> confirm -> atomic commit."""
+    from core.changesets import coordinator
+    from core.changesets.cli import pending_guidance, prepare_rejection_message
+
     print("Dex Obsidian Migration\n" + "="*50)
-    
+
     # Build indices
     print("Building indices...")
     person_idx = build_person_index()
@@ -204,82 +236,118 @@ def migrate_vault(dry_run: bool = False) -> int:
     print(f"  Found {len(person_idx)} people")
     print(f"  Found {len(project_idx)} projects")
     print(f"  Found {len(company_idx)} companies")
-    
+
     # Find all markdown files
     print("\nScanning vault...")
     md_files = [
         path for path in BASE_DIR.rglob('*.md')
         if _is_migratable_markdown(path)
     ]
+    relatives = sorted(
+        path.relative_to(BASE_DIR).as_posix() for path in md_files
+    )
     print(f"  Found {len(md_files)} markdown files")
     print(f"  Estimated time: {estimate_migration(md_files)}")
-    
+
     if dry_run:
         print("\n[DRY RUN MODE] - No files will be modified")
-    
+
+    # Never open a second conversion on top of an unfinished one.
+    guidance = pending_guidance(BASE_DIR)
+    if guidance is not None:
+        print("\n" + guidance)
+        return 0
+
     input("\nPress Enter to continue...")
-    
-    # Create backup via git
-    backup_ref = None
-    if not dry_run:
-        print("\nCreating backup...")
-        try:
-            backup_ref, backup_created = create_git_backup()
-        except RuntimeError as error:
-            print(f"Backup failed; no files were changed: {error}")
-            return 1
-        if backup_created:
-            print(f"  Backup commit created: {backup_ref}")
-        else:
-            print(f"  No new commit needed; the vault was already captured at {backup_ref}")
-    
-    # Process files
-    print("\nConverting files...")
-    total_changes = 0
-    files_modified = 0
-    
-    iterator = tqdm(md_files, desc="Processing") if HAS_TQDM else md_files
-    
-    for md_file in iterator:
-        try:
-            content = md_file.read_text()
-            new_content, changes = convert_references_in_file(
-                content, person_idx, project_idx, company_idx
-            )
-            
-            if changes > 0:
-                if not dry_run:
-                    md_file.write_text(new_content)
-                files_modified += 1
-                total_changes += changes
-        except Exception as e:
-            print(f"\nError processing {md_file}: {e}")
-    
+
+    if dry_run:
+        files_modified, total_changes = _preview(
+            md_files, person_idx, project_idx, company_idx
+        )
+        print("\n" + "="*50)
+        print("Dry run complete")
+        print(f"  Files scanned: {len(md_files)}")
+        print(f"  Files that would change: {files_modified}")
+        print(f"  Total conversions: {total_changes}")
+        print(
+            "\n[DRY RUN] No files were modified. Run without --dry-run to "
+            "apply changes."
+        )
+        return 0
+
+    # Capture the exact pre-migration state BEFORE staging anything, so the
+    # backup commit reflects only the user's untouched vault.
+    print("\nCreating backup...")
+    try:
+        backup_ref, backup_created = create_git_backup()
+    except RuntimeError as error:
+        print(f"Backup failed; no files were changed: {error}")
+        return 1
+    if backup_created:
+        print(f"  Backup commit created: {backup_ref}")
+    else:
+        print(f"  No new commit needed; the vault was already captured at {backup_ref}")
+
+    # Phase 1: convert and stage every file, verify fingerprints and the
+    # task-id invariant. Vault content is still untouched here.
+    print("\nPreparing all files (nothing is changed yet)...")
+    outcome = coordinator.prepare(
+        BASE_DIR,
+        relatives,
+        _bytes_converter(person_idx, project_idx, company_idx),
+    )
+
+    if outcome.status == coordinator.REJECTED:
+        print(
+            "\nMigration stopped before any file was changed:\n  "
+            + prepare_rejection_message(outcome.reason)
+        )
+        if outcome.detail:
+            print(f"  details: {outcome.detail}")
+        return 1
+
+    if outcome.status == coordinator.NOOP:
+        print("\nNothing to convert — every reference is already a wiki link.")
+        return 0
+
+    print(f"  Prepared {outcome.files_changed} of {outcome.files_scanned} files.")
+
+    # Phase 2: one library lock, one atomic group replacement.
+    print("\nApplying the whole batch atomically...")
+    try:
+        coordinator.commit(BASE_DIR, outcome.changeset_id)
+    except coordinator.ChangeSetConflict as error:
+        print(
+            "\nThe batch could not be applied safely and your files were not "
+            "changed. Your prepared copy is safely stored."
+        )
+        print(f"  reason: {error.reason}")
+        print(
+            f"\nRun `python -m core.changesets status` to see the one next step."
+        )
+        return 1
+
     # Summary
     print("\n" + "="*50)
     print("Migration Complete!")
-    print(f"  Files scanned: {len(md_files)}")
-    print(f"  Files modified: {files_modified}")
-    print(f"  Total conversions: {total_changes}")
-    
-    if not dry_run:
-        print(f"\nBackup baseline: {backup_ref}")
-        print(
-            "To revert these changes without rewriting history: "
-            f"git restore --source={backup_ref} --worktree -- ."
-        )
-        
-        # macOS notification
-        subprocess.run([
-            'osascript', '-e',
-            f'display notification "{files_modified} files converted with wiki links" '
-            f'with title "Dex Obsidian Migration Complete" sound name "Glass"'
-        ])
+    print(f"  Files scanned: {outcome.files_scanned}")
+    print(f"  Files modified: {outcome.files_changed}")
+    print(f"  Change set: {outcome.changeset_id}")
+    print(f"\nBackup baseline: {backup_ref}")
+    print(
+        "To revert these changes without rewriting history: "
+        f"git restore --source={backup_ref} --worktree -- ."
+    )
 
-        # Sound
-        subprocess.run(['afplay', '/System/Library/Sounds/Glass.aiff'])
-    else:
-        print("\n[DRY RUN] No files were modified. Run without --dry-run to apply changes.")
+    # macOS notification
+    subprocess.run([
+        'osascript', '-e',
+        f'display notification "{outcome.files_changed} files converted with wiki links" '
+        f'with title "Dex Obsidian Migration Complete" sound name "Glass"'
+    ])
+
+    # Sound
+    subprocess.run(['afplay', '/System/Library/Sounds/Glass.aiff'])
 
     return 0
 

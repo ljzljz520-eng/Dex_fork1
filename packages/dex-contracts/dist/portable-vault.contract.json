@@ -519,6 +519,13 @@
       "note": "closed Dex Solo scheduler handoff state; transaction-owned and never shipped"
     },
     {
+      "id": "runtime-changesets",
+      "path": "System/.dex/changesets",
+      "kind": "dir",
+      "ownership": "runtime",
+      "note": "durable per-file change intents, staged conversion output, and the pending event log for the two-phase content-conversion protocol; local runtime recovery state, never shipped"
+    },
+    {
       "id": "generated-health-state",
       "path": "System/.dex/health",
       "kind": "dir",

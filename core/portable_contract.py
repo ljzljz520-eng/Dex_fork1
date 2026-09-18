@@ -320,6 +320,10 @@ RULES: tuple[Rule, ...] = (
     _r("runtime-onboarding-session", "System/.onboarding-session.json", "file", "runtime",
        "pre-engine onboarding scratch; deleted by receipt-declared finalization"),
     _r("runtime-dex-dir", "System/.dex", "dir", "runtime"),
+    _r("runtime-changesets", "System/.dex/changesets", "dir", "runtime",
+       "durable per-file change intents, staged conversion output, and the "
+       "pending event log for the two-phase content-conversion protocol; "
+       "local runtime recovery state, never shipped"),
     _r("runtime-backup-logs", "System/backup", "dir", "runtime",
        "the backup engine's own logs, plus the restore runbook that a restored "
        "archive unpacks here; nothing under this path is shipped by a release, "
@@ -646,6 +650,7 @@ def update_write_verdict(
     if operation not in (
         "update",
         "customization-migration",
+        "content-conversion",
         "capability-state",
         "mcp-registration",
         "legacy-qmd-reconciliation",
@@ -990,6 +995,63 @@ def update_write_verdict(
             candidate,
             False,
             "outside-migration-seams",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
+
+    if operation == "content-conversion":
+        # A user-invoked, in-place conversion of the user's OWN markdown
+        # (the Obsidian wikilink migration is the first consumer). Narrow by
+        # construction, mirroring the migrator's own _is_migratable_markdown
+        # predicate: only regular .md classified vault/seed is allowed.
+        # Brain/generated/runtime paths, unclassified paths, non-markdown
+        # targets, and hard-denied patterns fail closed. This branch TERMINATES
+        # — it never falls through to the generic MUTATION_POLICY, whose
+        # vault="never" default the user explicitly overrode by launching the
+        # conversion. Symlinked targets are additionally refused by the
+        # transaction snapshot/apply layer.
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "unclassified-never-write",
+                None,
+                None,
+            )
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+
+        if (
+            resolution is not None
+            and candidate.endswith(".md")
+            and resolution.ownership in ("vault", "seed")
+        ):
+            return WriteVerdict(
+                candidate,
+                True,
+                "convert-with-user-approval",
+                resolution.ownership,
+                resolution.rule_id,
+            )
+
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-content-conversion",
             resolution.ownership if resolution is not None else None,
             resolution.rule_id if resolution is not None else None,
         )

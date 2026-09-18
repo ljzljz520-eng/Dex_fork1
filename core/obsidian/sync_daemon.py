@@ -37,12 +37,13 @@ class DexSyncHandler(FileSystemEventHandler):
     """Handle file changes and sync task states"""
 
     def __init__(self, vault_root: Path = BASE_DIR):
+        self.vault_root = Path(vault_root)
         self.debounce_time = 1.0  # seconds
         self.pending_files: Set[Path] = set()
         self.last_process_time = time.time()
         self.last_seen_states = {}
         self.failure_counts = {}
-        self._prime_last_seen_states(Path(vault_root))
+        self._prime_last_seen_states(self.vault_root)
 
     @staticmethod
     def _read_task_states(file_path: Path):
@@ -146,6 +147,37 @@ class DexSyncHandler(FileSystemEventHandler):
         except OSError:
             edit_is_canonical_tasks_file = False
 
+        # Never fan out onto an unfinished/interrupted batch change or a vault
+        # in conflict: a partial two-phase apply would otherwise be silently
+        # accepted and the write-back could widen the split. The gate is
+        # read-only; resolving it requires an explicit CLI action.
+        gate = self._fanout_gate(
+            task_ids={task_id for _, task_id, _ in changed_states},
+            file_path=file_path,
+        )
+        if gate is not None and not gate["allowed"]:
+            reason = gate.get("reason")
+            blocked = [
+                (state_key, task_id, completed)
+                for state_key, task_id, completed in changed_states
+                if task_id in canonical_states
+                and (
+                    edit_is_canonical_tasks_file
+                    or canonical_states[task_id] != completed
+                )
+            ]
+            for _state_key, task_id, _completed in blocked:
+                self._record_fanout_block(task_id, reason)
+            logger.warning(
+                "Skipped auto-sync (%s) for %d task(s); run "
+                "`python -m core.changesets status`",
+                reason,
+                len(blocked),
+            )
+            # last_seen_states is deliberately left at the old value so the
+            # transition is retried once the vault is clean again.
+            return canonical_states
+
         # Call Work MCP only for a newly observed transition that differs
         # from the canonical backlog.
         for state_key, task_id, completed in changed_states:
@@ -178,6 +210,48 @@ class DexSyncHandler(FileSystemEventHandler):
                 self._record_sync_failure(task_id, str(e))
 
         return canonical_states
+
+    def _fanout_gate(self, *, task_ids: set, file_path: Path):
+        """Read-only two-phase gate. Fails closed when the scan itself fails."""
+        try:
+            from core.changesets.consistency import fanout_gate
+
+            try:
+                relative = str(
+                    file_path.resolve().relative_to(self.vault_root.resolve())
+                )
+            except (OSError, ValueError):
+                relative = None
+
+            return fanout_gate(
+                self.vault_root,
+                task_ids=set(task_ids),
+                relatives=[relative] if relative else [],
+            )
+        except Exception as error:
+            logger.error(f"fanout gate check failed: {error}")
+            return {"allowed": False, "reason": "gate-check-failed"}
+
+    def _record_fanout_block(self, task_id: str, reason):
+        """Count a gated skip like other sync failures and surface it once."""
+        failures = self.failure_counts.get(task_id, 0) + 1
+        self.failure_counts[task_id] = failures
+        if failures != 1:
+            return
+        log_error(
+            source="obsidian-sync",
+            message=(
+                f"fanout gate ({reason}) blocked auto-sync for {task_id}"
+            ),
+            human_message=(
+                "Dex detected an unfinished batch change or inconsistent "
+                "files, so automatic task sync is paused to avoid a partial "
+                "update. Run `python -m core.changesets status` to see the "
+                f"one next step; sync for {task_id} resumes automatically "
+                "afterward."
+            ),
+            context={"task_id": task_id, "reason": reason},
+        )
 
     def _clear_sync_failure(self, task_id: str):
         self.failure_counts.pop(task_id, None)

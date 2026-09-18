@@ -353,6 +353,73 @@ def test_default_update_denies_customization_migration_seam() -> None:
 @pytest.mark.parametrize(
     "path",
     [
+        "05-Areas/People/Jane_Doe.md",  # vault user content
+        "04-Projects/Launch.md",  # vault user content
+        "00-Inbox/README.md",  # seeded markdown the user may have kept
+    ],
+)
+def test_content_conversion_allows_vault_and_seed_markdown(path: str) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path, exists=True, operation="content-conversion"
+    )
+
+    assert verdict.allowed is True
+    assert verdict.action == "convert-with-user-approval"
+    assert verdict.ownership in ("vault", "seed")
+
+
+@pytest.mark.parametrize(
+    "path,expected_action",
+    [
+        ("docs/architecture/INVENTORY.md", "outside-content-conversion"),  # generated
+        (".claude/skills/daily-plan/SKILL.md", "outside-content-conversion"),  # brain
+        ("System/.dex/changesets/cs/events.jsonl", "outside-content-conversion"),  # runtime
+        ("random/unclassified/notes.md", "outside-content-conversion"),  # unclassified
+        ("05-Areas/People/notes.txt", "outside-content-conversion"),  # non-markdown
+        ("05-Areas/People/private.pem", "deny"),  # hard-denied beats class
+        (".env", "deny"),  # hard-denied vault secret
+    ],
+)
+def test_content_conversion_refuses_everything_else(
+    path: str, expected_action: str
+) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path, exists=True, operation="content-conversion"
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == expected_action
+
+
+def test_content_conversion_does_not_change_default_update_policy() -> None:
+    # The user-approved conversion seam must not widen the ordinary update door.
+    verdict = portable_contract.update_write_verdict(
+        "05-Areas/People/Jane_Doe.md", exists=True
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "never"
+
+
+def test_content_conversion_rejects_unknown_operation_still() -> None:
+    with pytest.raises(ValueError, match="unknown write operation"):
+        portable_contract.update_write_verdict(
+            "05-Areas/People/Jane_Doe.md",
+            exists=True,
+            operation="not-a-real-operation",
+        )
+
+
+def test_changesets_runtime_dir_is_classified() -> None:
+    resolution = portable_contract.resolve("System/.dex/changesets")
+
+    assert resolution.ownership == "runtime"
+    assert not resolution.denied
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
         ".claude/skills/alpha-custom/SKILL.md",
         ".agents/skills/alpha-custom/SKILL.md",
     ],

@@ -165,6 +165,7 @@ CORE_MCP_SERVERS = (
     "analytics_server.py",
     "calendar_server.py",
     "career_server.py",
+    "changeset_server.py",
     "customization_migration_server.py",
     "dex_improvements_server.py",
     "granola_server.py",

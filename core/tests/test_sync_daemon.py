@@ -304,6 +304,126 @@ def test_repeated_failure_uses_the_session_start_error_queue(
     assert task_id in preflight.format_errors()
 
 
+def _prepare_wikilink_group(vault, relatives):
+    """Stage a real pending content-conversion change set over relatives."""
+    import re
+
+    from core.changesets import coordinator
+
+    def converter(data: bytes):
+        return re.sub(
+            rb"(?<!\[\[)\^(task-\d{8}-\d{3,})(?!\]\])",
+            rb"[[^\1]]",
+            data,
+        )
+
+    outcome = coordinator.prepare(vault, relatives, converter)
+    assert outcome.status == "prepared", outcome.reason
+    return outcome.changeset_id
+
+
+def test_pending_changeset_overlap_skips_automatic_fanout(
+    tmp_path, monkeypatch, sync_daemon
+):
+    from core.changesets.storage import ChangeSetStore
+    from core.mcp import work_server
+
+    task_id = "task-20260713-101"
+    canonical_file = tmp_path / "03-Tasks" / "Tasks.md"
+    note_file = tmp_path / "05-Areas" / "People" / "note.md"
+    mirror_file = tmp_path / "05-Areas" / "People" / "mirror.md"
+    write_task(canonical_file, task_id, completed=False)
+    write_task(note_file, task_id, completed=False)
+    # A mirror page that references the task but is not part of the staged
+    # group: editing it overlaps by task id without drifting group bytes.
+    write_task(mirror_file, task_id, completed=False)
+    _prepare_wikilink_group(
+        tmp_path, ["03-Tasks/Tasks.md", "05-Areas/People/note.md"]
+    )
+    monkeypatch.setattr(work_server, "get_tasks_file", lambda: canonical_file)
+
+    updates = []
+    monkeypatch.setattr(
+        work_server,
+        "update_task_status_everywhere",
+        lambda changed_id, completed: updates.append((changed_id, completed))
+        or {"success": True, "task_id": changed_id},
+    )
+    queued = []
+    monkeypatch.setattr(
+        sync_daemon,
+        "log_error",
+        lambda source, message, human_message=None, context=None: queued.append(
+            (source, message, human_message, context)
+        ),
+    )
+
+    handler = sync_daemon.DexSyncHandler(tmp_path)
+    write_task(mirror_file, task_id, completed=True)
+    handler.sync_file_tasks(mirror_file)
+
+    assert updates == []  # zero fan-out writes
+    assert handler.failure_counts[task_id] == 1
+    assert queued[0][0] == "obsidian-sync"
+    assert queued[0][3]["reason"] == "pending-changeset-overlap"
+    assert "python -m core.changesets status" in queued[0][2]
+    # last_seen is not advanced: after the group commits, the same edit retries.
+    assert handler.last_seen_states[(mirror_file, task_id)] is False
+    assert ChangeSetStore(tmp_path).list_ids()  # nothing was auto-rolled-back
+
+
+def test_changeset_conflict_blocks_fanout_even_without_overlap(
+    tmp_path, monkeypatch, sync_daemon
+):
+    from core.changesets.storage import ChangeSetStore
+    from core.mcp import work_server
+
+    other_id = "task-20260713-201"
+    x_file = tmp_path / "05-Areas" / "People" / "x.md"
+    y_file = tmp_path / "05-Areas" / "People" / "y.md"
+    write_task(x_file, other_id, completed=False)
+    write_task(y_file, other_id, completed=False)
+    cs_id = _prepare_wikilink_group(
+        tmp_path, ["05-Areas/People/x.md", "05-Areas/People/y.md"]
+    )
+    # Publish only one target: a genuine partial fan-out conflict.
+    store = ChangeSetStore(tmp_path)
+    change = store.load(cs_id)
+    (tmp_path / change.intents[0].relative).write_bytes(
+        store.read_staged(cs_id, 0)
+    )
+
+    task_id = "task-20260713-202"
+    canonical_file = tmp_path / "03-Tasks" / "Tasks.md"
+    note_file = tmp_path / "05-Areas" / "People" / "note.md"
+    write_task(canonical_file, task_id, completed=False)
+    write_task(note_file, task_id, completed=False)
+    monkeypatch.setattr(work_server, "get_tasks_file", lambda: canonical_file)
+
+    updates = []
+    monkeypatch.setattr(
+        work_server,
+        "update_task_status_everywhere",
+        lambda changed_id, completed: updates.append((changed_id, completed))
+        or {"success": True, "task_id": changed_id},
+    )
+    queued = []
+    monkeypatch.setattr(
+        sync_daemon,
+        "log_error",
+        lambda source, message, human_message=None, context=None: queued.append(
+            (source, message, human_message, context)
+        ),
+    )
+
+    handler = sync_daemon.DexSyncHandler(tmp_path)
+    write_task(note_file, task_id, completed=True)
+    handler.sync_file_tasks(note_file)
+
+    assert updates == []
+    assert queued[0][3]["reason"] == "vault-conflict"
+
+
 def test_direct_edit_to_canonical_tasks_file_propagates(
     tmp_path, monkeypatch, sync_daemon
 ):

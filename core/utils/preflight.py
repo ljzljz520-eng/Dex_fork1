@@ -62,6 +62,7 @@ SERVER_MODULES = {
     "session-memory": "session_memory_server.py",
     "customization-migration-mcp": "customization_migration_server.py",
     "update-checker": "update_checker.py",
+    "dex-changeset-mcp": "changeset_server.py",
 }
 
 WORK_MCP_NAME = "work-mcp"
@@ -80,6 +81,7 @@ SERVER_LABELS = {
     "resume-mcp": "Resume Builder",
     "customization-migration-mcp": "Customization Migration",
     "update-checker": "Update Checker",
+    "dex-changeset-mcp": "Batch Change Consistency",
 }
 
 

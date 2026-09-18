@@ -32,6 +32,16 @@
       "trade_offs": ["Career outputs remain bounded by the evidence the person has chosen to capture."]
     },
     {
+      "id": "dex-changeset-mcp",
+      "capability_class": "mcp-server",
+      "impact_tier": "medium",
+      "availability": "active",
+      "value": "Makes unfinished or interrupted batch file changes visible so partial updates can never be silently accepted.",
+      "jobs_served": ["manage-tasks-reliably"],
+      "prerequisites": ["A Dex vault with the change-set consistency store is available."],
+      "trade_offs": ["The server is strictly read-only; finishing or undoing a batch change still requires an explicit command."]
+    },
+    {
       "id": "dex-customization-migration-mcp",
       "capability_class": "mcp-server",
       "impact_tier": "medium",

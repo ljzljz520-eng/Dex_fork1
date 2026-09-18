@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 22eef7706719b0675e319e1ddb5a8e56e1511a02fc05d8bf509ebb94ae32341e -->
+<!-- Content SHA-256: 68d174bf03974122924599da872bc919c91d58bd800d91fe110865a11240a68c -->
 
 # Architecture Inventory
 
@@ -8,13 +8,14 @@ This inventory is derived only from repository code and shipped skill files.
 
 ## MCP engines
 
-**Engine count:** 11
+**Engine count:** 12
 
 | Server | Source | Tool count | `feature_status` honesty contract | Exposed tools |
 | --- | --- | ---: | :---: | --- |
 | `dex-analytics` | `core/mcp/analytics_server.py` | 4 | yes | `check_analytics_status`, `identify_user`, `test_connection`, `track_event` |
 | `dex-calendar-mcp` | `core/mcp/calendar_server.py` | 15 | yes | `calendar_create_event`, `calendar_delete_event`, `calendar_get_events`, `calendar_get_events_with_attendees`, `calendar_get_next_event`, `calendar_get_today`, `calendar_list_calendars`, `calendar_search_events`, `reminders_clear_completed`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items` |
 | `dex-career-mcp` | `core/mcp/career_server.py` | 8 | yes | `analyze_coverage`, `generate_evidence_from_work`, `parse_ladder`, `promotion_readiness_score`, `scan_evidence`, `scan_work_for_evidence`, `skills_gap_analysis`, `timeline_analysis` |
+| `dex-changeset-mcp` | `core/mcp/changeset_server.py` | 2 | yes | `get_changeset_status`, `list_pending_changesets` |
 | `dex-customization-migration-mcp` | `core/mcp/customization_migration_server.py` | 7 | yes | `assess_customizations`, `preview_customization_capsule`, `read_activation_status`, `read_customization_capsule_blob`, `read_customization_capsule_section`, `read_customization_migration_status`, `read_staging_status` |
 | `dex-granola-mcp` | `core/mcp/granola_server.py` | 6 | yes | `granola_check_available`, `granola_get_extent`, `granola_get_meeting_details`, `granola_get_recent_meetings`, `granola_get_today_meetings`, `granola_search_meetings` |
 | `dex-improvements-mcp` | `core/mcp/dex_improvements_server.py` | 9 | no | `capture_idea`, `enrich_idea`, `get_backlog_stats`, `get_idea_details`, `list_ideas`, `mark_implemented`, `synthesize_changelog`, `synthesize_learnings`, `validate_backlog` |
@@ -126,6 +127,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 | `dex-analytics` | 30 | **over-surfaced** | `change-job` (`track_event`); `commitments` (`track_event`); `create-mcp` (`track_event`); `create-skill` (`track_event`); `daily-plan` (`track_event`); `daily-review` (`track_event`); `dex-add-mcp` (`track_event`); `dex-backlog` (`track_event`); `dex-improve` (`track_event`); `dex-level-up` (`track_event`); `dex-obsidian-setup` (`track_event`); `dex-whats-new` (`track_event`); `getting-started` (`track_event`); `goal-backlog` (`track_event`); `initiative-kickoff` (`track_event`); `integrate-mcp` (`track_event`); `journal` (`track_event`); `meeting-closeout` (`track_event`); `meeting-prep` (`track_event`); `process-meetings` (`track_event`); `product-brief` (`track_event`); `project-health` (`track_event`); `prompt-improver` (`track_event`); `relationship-radar` (`track_event`); `reset` (`track_event`); `save-insight` (`track_event`); `triage` (`track_event`); `week-plan` (`track_event`); `week-review` (`track_event`); `xray` (`track_event`) |
 | `dex-calendar-mcp` | 6 | normal | `daily-plan` (`calendar_get_events_with_attendees`, `calendar_get_today`, `reminders_clear_completed`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `daily-review` (`calendar_get_events_with_attendees`, `calendar_get_today`, `reminders_clear_completed`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `meeting-prep` (`calendar_get_events_with_attendees`); `process-meetings` (`calendar_get_events_with_attendees`); `week-plan` (`calendar_get_events_with_attendees`); `week-review` (`calendar_get_events_with_attendees`, `reminders_list_items`) |
 | `dex-career-mcp` | 0 | **under-surfaced** | — |
+| `dex-changeset-mcp` | 0 | **under-surfaced** | — |
 | `dex-customization-migration-mcp` | 1 | normal | `dex-update` (`read_customization_capsule_blob`, `read_customization_capsule_section`) |
 | `dex-granola-mcp` | 4 | normal | `daily-plan` (`granola_get_recent_meetings`); `getting-started` (`granola_check_available`, `granola_get_recent_meetings`); `week-plan` (`granola_get_today_meetings`); `zoom-setup` (`granola_check_available`) |
 | `dex-improvements-mcp` | 7 | normal | `daily-plan` (`list_ideas`, `synthesize_changelog`, `synthesize_learnings`); `daily-review` (`list_ideas`); `dex-backlog` (`capture_idea`, `mark_implemented`); `dex-doctor` (`capture_idea`); `dex-level-up` (`capture_idea`); `dex-whats-new` (`synthesize_changelog`, `synthesize_learnings`); `week-review` (`list_ideas`) |
@@ -138,6 +140,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 ### Under-surfaced servers
 
 - `dex-career-mcp` — 0 skills reference its 8 tools.
+- `dex-changeset-mcp` — 0 skills reference its 2 tools.
 - `dex-resume-mcp` — 0 skills reference its 12 tools.
 - `dex-session-memory` — 0 skills reference its 8 tools.
 
@@ -156,7 +159,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 | `seed` | 38 | `write-if-absent` |
 | `generated` | 9 | `regenerate` |
 | `vault` | 19 | `never` |
-| `runtime` | 15 | `never` |
+| `runtime` | 16 | `never` |
 
 <details><summary><code>brain</code> declared paths (46)</summary>
 
@@ -290,12 +293,13 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>runtime</code> declared paths (15)</summary>
+<details><summary><code>runtime</code> declared paths (16)</summary>
 
 - `.logs` (dir; `runtime-logs`)
 - `System/.dex` (dir; `runtime-dex-dir`)
 - `System/.dex/adoptions` (dir; `runtime-adoption-receipts`)
 - `System/.dex/automation-ownership.json` (file; `runtime-automation-ownership`)
+- `System/.dex/changesets` (dir; `runtime-changesets`)
 - `System/.dex/ledger` (dir; `runtime-lifecycle-ledger`)
 - `System/.dex/lifecycle/activation.json` (file; `runtime-lifecycle-activation`)
 - `System/.last-learning-check` (file; `runtime-last-learning-check`)

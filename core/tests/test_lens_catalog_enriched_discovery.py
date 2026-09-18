@@ -41,12 +41,13 @@ def _write_mcp_server(root: Path, *, duplicate_server: bool = False) -> Path:
 def test_discovers_every_core_and_integration_mcp_server() -> None:
     servers = discover_mcp_servers(REPO_ROOT)
 
-    assert len(servers) == 11
-    assert sum(server.tool_count for server in servers) == 156
+    assert len(servers) == 12
+    assert sum(server.tool_count for server in servers) == 158
     assert {server.server_name: server.tool_count for server in servers} == {
         "dex-analytics": 4,
         "dex-calendar-mcp": 15,
         "dex-career-mcp": 8,
+        "dex-changeset-mcp": 2,
         "dex-customization-migration-mcp": 7,
         "dex-granola-mcp": 6,
         "dex-improvements-mcp": 9,
@@ -151,8 +152,8 @@ def test_enriched_registry_exactly_annotates_every_non_skill_candidate() -> None
     }
 
     assert registry["registry_version"] == 1
-    assert len(entries) == 21
-    assert len({entry["id"] for entry in entries}) == 21
+    assert len(entries) == 22
+    assert len({entry["id"] for entry in entries}) == 22
     for capability_class, expected_ids in discovered.items():
         assert {entry["id"] for entry in entries if entry["capability_class"] == capability_class} == expected_ids
     assert all(entry["impact_tier"] in {"core", "high", "medium", "niche"} for entry in entries)
